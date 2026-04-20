@@ -96,10 +96,12 @@ async function intelligentlyFetchJobDetails(url) {
       }
     }
     
-    // If JSON-LD didn't have description, try Meta description
+    // If JSON-LD didn't have description, try Meta description broadly
     if (!jobTextFallback) {
       const metaDesc = html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i) || 
-                       html.match(/<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+                       html.match(/<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
+                       html.match(/<meta[^>]+name=["']twitter:description["'][^>]*content=["']([^"']+)["']/i) ||
+                       html.match(/itemprop=["']description["'][^>]*content=["']([^"']+)["']/i);
       if (metaDesc) jobTextFallback = metaDesc[1];
     }
     
@@ -194,7 +196,7 @@ async function runHealthCheck() {
 
   } else if (jobText.length < 120 && notes.length < 100) {
     status = 'Needs Decision';
-    reason = 'Insufficient job description (< 120 chars). Unable to fetch properly from URL.';
+    reason = 'Insufficient job description (< 120 chars). This ATS heavily blocks proxies via Javascript SPAs. Please manually paste the JD text.';
   } else if (isStale) {
     status = 'Needs Decision';
     reason = 'Stale job listing (older than 24 hours). Needs manual check if still open.';
