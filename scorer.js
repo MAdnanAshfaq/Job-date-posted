@@ -63,8 +63,9 @@ async function intelligentlyFetchJobDetails(url) {
     if (!html) return null;
     
     let company = '';
+    let jobTextFallback = '';
     
-    // Parse Company from LD-JSON block
+    // Parse Company and Description from LD-JSON block
     const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
     let match;
     while ((match = re.exec(html)) !== null) {
@@ -83,18 +84,40 @@ async function intelligentlyFetchJobDetails(url) {
           if (item.hiringOrganization && item.hiringOrganization.name) {
             company = item.hiringOrganization.name;
           }
+          // Extract job description cleanly from schema bypassing JS blocking
+          if (item.description && !jobTextFallback) {
+             const tempNode = document.createElement('div');
+             tempNode.innerHTML = item.description;
+             jobTextFallback = tempNode.textContent || tempNode.innerText || '';
+          }
         }
       } catch (e) {
         // malformed json skip
       }
     }
     
-    // Parse Text from DOM
+    // If JSON-LD didn't have description, try Meta description
+    if (!jobTextFallback) {
+      const metaDesc = html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i) || 
+                       html.match(/<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+      if (metaDesc) jobTextFallback = metaDesc[1];
+    }
+    
+    // Parse pure DOM text as last resort
     const doc = new DOMParser().parseFromString(html, 'text/html');
     doc.querySelectorAll('script, style, noscript, nav, footer, header').forEach(e => e.remove());
-    const jobText = doc.body.innerText.replace(/\s+/g, ' ').trim();
+    let domText = doc.body.innerText.replace(/\s+/g, ' ').trim();
     
-    return { jobText, company };
+    // If DOM text is too small (likely JS rendered block), use our fallbacks!
+    let finalJobText = domText;
+    if (domText.length < 200 && jobTextFallback.length > domText.length) {
+       finalJobText = jobTextFallback;
+    } else if (jobTextFallback.length > domText.length) {
+       // JSON-LD description is often much cleaner and more accurate than raw scraped innerText
+       finalJobText = jobTextFallback;
+    }
+    
+    return { jobText: finalJobText, company };
   } catch (err) {
     console.error('Fetch error:', err);
     return null;
