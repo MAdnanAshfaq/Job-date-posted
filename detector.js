@@ -1,17 +1,9 @@
 /**
  * Job Date Finder — detector.js
  *
- * Exact detection method:
- *   1. Fetch raw HTML via CORS proxy (allorigins.win)
- *   2. Parse <script type="application/ld+json"> for JobPosting.datePosted (same as Google Jobs)
- *   3. Fallback: <meta> tags (article:published_time, pubdate, etc.)
- *   4. Fallback: Microdata itemprop=datePosted / <time datetime>
- *   5. Fallback: Date pattern in URL path
+ * Modified to bypass CORS issues using the custom Netlify serverless function.
+ * Fetches data via `/.netlify/functions/fetch-job` and renders the payload.
  */
-
-// ─── CORS Proxy ───────────────────────────────────────────────────────────────
-// allorigins returns JSON: { contents: "<raw html>", status: { ... } }
-const PROXY = 'https://api.allorigins.win/get?url=';
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
 async function detect() {
@@ -27,29 +19,44 @@ async function detect() {
   out.innerHTML = `
     <div class="loading-state">
       <div class="spinner"></div>
-      <span>Fetching raw HTML via proxy &amp; scanning for date layers…</span>
+      <span>Sending URL to Netlify Serverless Function...</span>
     </div>`;
 
   try {
-    // ── Fetch via proxy ──────────────────────────────────────────────────────
-    const proxyUrl = PROXY + encodeURIComponent(url);
+    const proxyUrl = `/.netlify/functions/fetch-job?url=${encodeURIComponent(url)}`;
     const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error(`Proxy returned HTTP ${res.status}`);
-
     const json = await res.json();
-    const html = (json.contents || '').trim();
-    if (!html) throw new Error('Proxy returned empty content. The site may block scrapers or require JavaScript rendering.');
+    
+    if (!res.ok) throw new Error(json.error || `Proxy returned HTTP ${res.status}`);
 
-    // ── Run all detection layers ─────────────────────────────────────────────
-    const layers = [
-      detectLdJson(html),
-      detectMetaTags(html),
-      detectMicrodata(html),
-      detectUrlPattern(url),
-    ];
+    // Map backend layers back into frontend UI expected format
+    const uiLayers = json.layers.map(l => {
+      let detail = l.description;
+      let date = null;
+      let source = null;
+      if (l.found && l.results.length > 0) {
+        detail = `Found: ${l.results[0].context}`;
+        date = l.results[0].date;
+        source = l.results[0].source;
+      } else {
+        detail = 'No matching date found in this layer';
+      }
+      return {
+        num: '0' + l.id,
+        name: l.name,
+        found: l.found,
+        detail: detail,
+        date: date,
+        source: source
+      };
+    });
 
-    const winner = layers.find(l => l.found);
-    renderResult(layers, winner);
+    const uiWinner = json.winner ? {
+      date: json.winner.normalizedDate || json.winner.date,
+      source: json.winner.source,
+    } : null;
+
+    renderResult(uiLayers, uiWinner, json.meta);
 
   } catch (err) {
     renderError(err.message);
@@ -58,196 +65,18 @@ async function detect() {
   btn.disabled = false;
 }
 
-// ─── Layer 1: JSON-LD ─────────────────────────────────────────────────────────
-function detectLdJson(html) {
-  const layer = {
-    num: '01',
-    name: 'JSON-LD structured data',
-    field: 'datePosted / datePublished',
-    found: false,
-    date: null,
-    detail: '',
-    source: null,
-  };
-
-  // Extract all <script type="application/ld+json"> blocks
-  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let match;
-
-  while ((match = re.exec(html)) !== null) {
-    let obj;
-    try { obj = JSON.parse(match[1]); } catch { continue; }
-
-    // Flatten: handle arrays and @graph
-    const items = [];
-    const flatten = (node) => {
-      if (!node) return;
-      if (Array.isArray(node)) { node.forEach(flatten); return; }
-      items.push(node);
-      if (node['@graph']) flatten(node['@graph']);
-    };
-    flatten(obj);
-
-    for (const item of items) {
-      // Prefer JobPosting, but also check generic types
-      const date = item.datePosted || item.datePublished || item.date;
-      if (date && isValidDate(date)) {
-        const type = item['@type'] || 'Unknown';
-        const field = item.datePosted ? 'datePosted' : item.datePublished ? 'datePublished' : 'date';
-        layer.found  = true;
-        layer.date   = normalizeDate(date);
-        layer.detail = `Found in @type="${Array.isArray(type) ? type.join(', ') : type}" → "${field}"`;
-        layer.source = `ld+json:${field}`;
-        return layer;
-      }
-    }
-  }
-
-  layer.detail = 'No ld+json block contained datePosted or datePublished';
-  return layer;
-}
-
-// ─── Layer 2: Meta tags ───────────────────────────────────────────────────────
-function detectMetaTags(html) {
-  const layer = {
-    num: '02',
-    name: 'HTML meta tags',
-    field: 'article:published_time · pubdate · DC.date',
-    found: false,
-    date: null,
-    detail: '',
-    source: null,
-  };
-
-  const patterns = [
-    { re: /property=["']article:published_time["'][^>]+content=["']([^"']+)["']/i, key: 'article:published_time' },
-    { re: /content=["']([^"']+)["'][^>]+property=["']article:published_time["']/i, key: 'article:published_time' },
-    { re: /name=["']date["'][^>]+content=["']([^"']+)["']/i,                       key: 'name=date' },
-    { re: /content=["']([^"']+)["'][^>]+name=["']date["']/i,                       key: 'name=date' },
-    { re: /name=["']pubdate["'][^>]+content=["']([^"']+)["']/i,                    key: 'pubdate' },
-    { re: /content=["']([^"']+)["'][^>]+name=["']pubdate["']/i,                    key: 'pubdate' },
-    { re: /name=["']publish[_-]?date["'][^>]+content=["']([^"']+)["']/i,           key: 'publishDate' },
-    { re: /content=["']([^"']+)["'][^>]+name=["']publish[_-]?date["']/i,           key: 'publishDate' },
-    { re: /name=["']DC\.date["'][^>]+content=["']([^"']+)["']/i,                   key: 'DC.date' },
-    { re: /content=["']([^"']+)["'][^>]+name=["']DC\.date["']/i,                   key: 'DC.date' },
-    { re: /property=["']og:published_time["'][^>]+content=["']([^"']+)["']/i,      key: 'og:published_time' },
-    { re: /content=["']([^"']+)["'][^>]+property=["']og:published_time["']/i,      key: 'og:published_time' },
-    // Adzuna-specific / generic
-    { re: /name=["']job[_-]?date["'][^>]+content=["']([^"']+)["']/i,               key: 'job:date' },
-    { re: /content=["']([^"']+)["'][^>]+name=["']job[_-]?date["']/i,               key: 'job:date' },
-  ];
-
-  for (const { re, key } of patterns) {
-    const m = html.match(re);
-    if (m && isValidDate(m[1])) {
-      layer.found  = true;
-      layer.date   = normalizeDate(m[1]);
-      layer.detail = `Found <meta ${key}>`;
-      layer.source = `meta:${key}`;
-      return layer;
-    }
-  }
-
-  layer.detail = 'No date-related meta tags found';
-  return layer;
-}
-
-// ─── Layer 3: Microdata ───────────────────────────────────────────────────────
-function detectMicrodata(html) {
-  const layer = {
-    num: '03',
-    name: 'Microdata (itemprop)',
-    field: 'itemprop=datePosted · <time datetime>',
-    found: false,
-    date: null,
-    detail: '',
-    source: null,
-  };
-
-  const patterns = [
-    // itemprop=datePosted with content or datetime attribute (both attribute orderings)
-    { re: /itemprop=["']datePosted["'][^>]*(?:content|datetime)=["']([^"']+)["']/i,   key: 'itemprop=datePosted (content)' },
-    { re: /(?:content|datetime)=["']([^"']+)["'][^>]*itemprop=["']datePosted["']/i,   key: 'itemprop=datePosted (content)' },
-    { re: /itemprop=["']datePublished["'][^>]*(?:content|datetime)=["']([^"']+)["']/i,key: 'itemprop=datePublished' },
-    { re: /(?:content|datetime)=["']([^"']+)["'][^>]*itemprop=["']datePublished["']/i,key: 'itemprop=datePublished' },
-    // <time datetime="YYYY-MM-DD">
-    { re: /<time[^>]+datetime=["'](\d{4}-\d{2}-\d{2}[^"']*?)["']/i,                  key: '<time datetime>' },
-  ];
-
-  for (const { re, key } of patterns) {
-    const m = html.match(re);
-    if (m && isValidDate(m[1])) {
-      layer.found  = true;
-      layer.date   = normalizeDate(m[1]);
-      layer.detail = `Found ${key} attribute`;
-      layer.source = `microdata:${key}`;
-      return layer;
-    }
-  }
-
-  layer.detail = 'No microdata date attributes found';
-  return layer;
-}
-
-// ─── Layer 4: URL pattern ─────────────────────────────────────────────────────
-function detectUrlPattern(url) {
-  const layer = {
-    num: '04',
-    name: 'URL date pattern',
-    field: 'Path segments (YYYY/MM/DD)',
-    found: false,
-    date: null,
-    detail: '',
-    source: null,
-  };
-
-  const patterns = [
-    /\/(\d{4})\/(\d{2})\/(\d{2})\//,
-    /[/_-](\d{4})-(\d{2})-(\d{2})(?:[/_?#]|$)/,
-    /[?&](?:date|posted|published)=(\d{4}-\d{2}-\d{2})/i,
-  ];
-
-  for (const re of patterns) {
-    const m = url.match(re);
-    if (m) {
-      const ds = m[1] + '-' + (m[2] || '01') + '-' + (m[3] || '01');
-      if (isValidDate(ds)) {
-        layer.found  = true;
-        layer.date   = ds;
-        layer.detail = `Date encoded in URL: ${ds}`;
-        layer.source = 'url:pattern';
-        return layer;
-      }
-    }
-  }
-
-  layer.detail = 'No date pattern detected in URL';
-  return layer;
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function isValidDate(str) {
-  if (!str || typeof str !== 'string') return false;
-  const d = new Date(str.trim().substring(0, 25)); // truncate ISO timestamp
-  if (isNaN(d.getTime())) return false;
-  const year = d.getFullYear();
-  return year >= 2010 && d <= new Date();
-}
-
-function normalizeDate(str) {
-  // Return ISO date string YYYY-MM-DD
-  const d = new Date(str.trim().substring(0, 25));
-  if (isNaN(d.getTime())) return str;
-  return d.toISOString().substring(0, 10);
-}
-
 function formatDisplay(isoDate) {
-  const d = new Date(isoDate + 'T12:00:00'); // noon to avoid timezone flip
+  // Try passing directly. Sometimes isoDate gives us '2024-05-15T00...'.
+  // We append T12:00:00 just to keep the JS parser from shifting local timezone if it's purely YYYY-MM-DD
+  const isoStr = isoDate.includes('T') ? isoDate : isoDate + 'T12:00:00';
+  const d = new Date(isoStr);
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function daysAgo(isoDate) {
-  const d    = new Date(isoDate + 'T12:00:00');
+  const isoStr = isoDate.includes('T') ? isoDate : isoDate + 'T12:00:00';
+  const d    = new Date(isoStr);
   const now  = new Date();
   const diff = Math.round((now - d) / 86400000);
   if (diff < 0)   return 'future date';
@@ -261,7 +90,7 @@ function daysAgo(isoDate) {
 }
 
 // ─── Render helpers ───────────────────────────────────────────────────────────
-function renderResult(layers, winner) {
+function renderResult(layers, winner, meta) {
   const out = document.getElementById('result-area');
 
   const traceRows = layers.map(l => `
@@ -280,11 +109,17 @@ function renderResult(layers, winner) {
     </div>`).join('');
 
   if (!winner) {
+    let extraContext = "This usually means the page is JavaScript-rendered (SPA) — the HTML source is a blank shell and the date loads via API after the browser executes JS. Sites like Greenhouse, Workday, and Lever do this.";
+    
+    if (meta && meta.isJsRendered) {
+      extraContext = "⚠️ We detected a JS-Rendered application (like React/Next.js/SPA). Dates are likely injected by client-side APIs, which requires a headless browser (Puppeteer/Playwright) to detect.";
+    }
+
     out.innerHTML = `
       <div class="no-date-block">
         No date found across all 4 layers.
-        <div style="margin-top:8px;font-size:12px">
-          This usually means the page is JavaScript-rendered (SPA) — the HTML source is a blank shell and the date loads via API after the browser executes JS. Sites like Greenhouse, Workday, and Lever do this. A headless browser (Puppeteer/Playwright) is required for those.
+        <div style="margin-top:8px;font-size:12px; color: var(--danger)">
+          ${extraContext}
         </div>
       </div>
       <div style="margin-top:16px">
@@ -311,21 +146,11 @@ function renderResult(layers, winner) {
 }
 
 function renderError(msg) {
-  const hints = {
-    '403': 'The site returned 403 Forbidden — it blocks scrapers. Try viewing page source manually and searching for <code>datePosted</code> or <code>ld+json</code>.',
-    'empty': 'The proxy returned empty HTML — the page likely requires JavaScript to render content.',
-    'default': 'The site may block the CORS proxy, require login, or render content via JavaScript. Check page source manually: right-click → View Page Source → search for <code>datePosted</code>.',
-  };
-
-  const hint = msg.includes('403') ? hints['403']
-             : msg.includes('empty') ? hints['empty']
-             : hints['default'];
-
   document.getElementById('result-area').innerHTML = `
     <div class="error-block">
-      <div class="error-title">Could not fetch page</div>
+      <div class="error-title">Could not fetch page from Serverless Function</div>
       ${escapeHtml(msg)}
-      <div class="error-hint">${hint}</div>
+      <div class="error-hint">The Netlify serverless function failed to return data. It may have hit a timeout or the site actively blocked the server-side proxy.</div>
     </div>`;
 }
 
