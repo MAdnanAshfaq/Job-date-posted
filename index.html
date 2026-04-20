@@ -92,20 +92,25 @@
       <section class="tool-card health-form">
         <div class="input-grid">
           <div class="input-group full-width">
-            <label for="hc-resume">Candidate Resume (Text)</label>
-            <textarea id="hc-resume" placeholder="Paste candidate resume here..."></textarea>
+            <label for="hc-resume-file">Candidate Resume (PDF)</label>
+            <div class="file-upload-wrap">
+              <input type="file" id="hc-resume-file" accept=".pdf" />
+              <div class="file-status" id="hc-resume-status">No file chosen</div>
+            </div>
+            <!-- Hidden textarea to store the parsed plain text so existing logic works -->
+            <textarea id="hc-resume" style="display:none;"></textarea>
           </div>
           <div class="input-group full-width">
-            <label for="hc-job-text">Job Posting Text</label>
-            <textarea id="hc-job-text" placeholder="Paste full job description here..."></textarea>
+            <label for="hc-job-text">Job Posting Text (Optional if URL provided)</label>
+            <textarea id="hc-job-text" placeholder="Will be auto-fetched if you provide a valid URL below..."></textarea>
           </div>
           <div class="input-group">
             <label for="hc-job-url">Job URL</label>
             <input type="text" id="hc-job-url" placeholder="https://..." />
           </div>
           <div class="input-group">
-            <label for="hc-company">Company Name</label>
-            <input type="text" id="hc-company" placeholder="e.g. Acme Corp" />
+            <label for="hc-company">Company Name (Optional)</label>
+            <input type="text" id="hc-company" placeholder="Auto-detected if blank" />
           </div>
           <div class="input-group full-width">
             <label for="hc-notes">Submitter Notes</label>
@@ -130,6 +135,7 @@
     </div>
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="detector.js"></script>
   <script src="scorer.js"></script>
 </body>

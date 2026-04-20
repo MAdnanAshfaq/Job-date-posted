@@ -653,3 +653,52 @@ textarea::placeholder { color: var(--muted); }
   color: var(--danger);
   border: 1px solid rgba(255, 95, 95, 0.4) !important;
 }
+
+/* ─── File Upload Dropzone ─── */
+.file-upload-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #111;
+  border: 1px dashed rgba(255,255,255,0.2);
+  border-radius: 4px;
+  padding: 12px 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.file-upload-wrap:hover {
+  border-color: var(--accent);
+  background: rgba(212,255,92,0.02);
+}
+
+.file-upload-wrap input[type="file"] {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.file-upload-wrap input[type="file"]::file-selector-button {
+  background: #222;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: #fff;
+  padding: 6px 12px;
+  margin-right: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.file-upload-wrap input[type="file"]::file-selector-button:hover {
+  background: #333;
+}
+
+.file-status {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--muted);
+}
+.file-status.loading { color: #ffbb00; }
+.file-status.success { color: var(--accent); }
+.file-status.error { color: var(--danger); }
