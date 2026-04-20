@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Date Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+
+  <main>
+    <header>
+      <div class="badge">TOOL</div>
+      <h1>Job Date<br /><span>Finder</span></h1>
+      <p class="tagline">Detects when a job was posted — even when the site hides it.<br />Reads raw HTML across 4 hidden data layers.</p>
+    </header>
+
+    <section class="search-section">
+      <div class="input-wrap">
+        <label for="url-input">Job listing URL</label>
+        <div class="input-row">
+          <input
+            id="url-input"
+            type="url"
+            placeholder="https://www.adzuna.com/details/..."
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button id="detect-btn">
+            <span class="btn-text">Detect</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="example-links">
+          Try an example:
+          <button class="ex-link" data-url="https://www.adzuna.com/details/5690353218">Adzuna</button>
+          <button class="ex-link" data-url="https://www.linkedin.com/jobs/view/3800000000">LinkedIn</button>
+          <button class="ex-link" data-url="https://www.indeed.com/viewjob?jk=abc123">Indeed</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="result-section" class="result-section hidden" aria-live="polite">
+      <!-- Injected by JS -->
+    </section>
+
+    <section class="how-section">
+      <h2>How dates are found</h2>
+      <div class="layer-explainers">
+        <div class="layer-card" data-layer="1">
+          <div class="lc-num">01</div>
+          <div class="lc-body">
+            <h3>JSON-LD structured data</h3>
+            <p>Most reliable. Sites embed a hidden <code>&lt;script type="application/ld+json"&gt;</code> block with a <code>JobPosting</code> schema containing <code>"datePosted"</code>. Invisible on the rendered page but present in raw HTML source. Google uses this for job search cards.</p>
+            <div class="lc-example"><code>"datePosted": "2026-04-05"</code></div>
+          </div>
+        </div>
+        <div class="layer-card" data-layer="2">
+          <div class="lc-num">02</div>
+          <div class="lc-body">
+            <h3>HTML meta tags</h3>
+            <p>Many CMS platforms write the publish date into <code>&lt;meta&gt;</code> tags for SEO or Open Graph. Common ones: <code>article:published_time</code>, <code>og:published_time</code>, <code>meta name="date"</code>.</p>
+            <div class="lc-example"><code>&lt;meta property="article:published_time" content="2026-04-05T10:00:00Z"&gt;</code></div>
+          </div>
+        </div>
+        <div class="layer-card" data-layer="3">
+          <div class="lc-num">03</div>
+          <div class="lc-body">
+            <h3>Microdata / time elements</h3>
+            <p>Older Schema.org format using HTML attributes directly. Elements with <code>itemprop="datePosted"</code> or <code>&lt;time datetime="..."&gt;</code> tags embedded in the markup itself.</p>
+            <div class="lc-example"><code>&lt;time itemprop="datePosted" datetime="2026-04-05"&gt;</code></div>
+          </div>
+        </div>
+        <div class="layer-card" data-layer="4">
+          <div class="lc-num">04</div>
+          <div class="lc-body">
+            <h3>URL date patterns</h3>
+            <p>Last resort. Some job portals embed the post date directly in the URL path or query string, e.g. <code>/jobs/2026/04/05/data-engineer</code> or <code>?date=2026-04-05</code>.</p>
+            <div class="lc-example"><code>/jobs/<b>2026</b>/<b>04</b>/<b>05</b>/senior-engineer</code></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Reads raw HTML source via a serverless proxy — same technique used by job aggregators.</p>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Date Finder</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="grid-bg"></div>
+
+  <main>
+    <header>
+      <div class="badge">UTILITY TOOL</div>
+      <h1>Job Date<br /><span class="accent">Finder</span></h1>
+      <p class="tagline">Detects when a job was posted — even when the site hides it.<br />Works on Adzuna, Indeed, LinkedIn, Glassdoor &amp; more.</p>
+    </header>
+
+    <section class="tool-card">
+      <div class="input-group">
+        <label for="url-input">Job listing URL</label>
+        <div class="input-row">
+          <input
+            type="text"
+            id="url-input"
+            placeholder="https://www.adzuna.com/details/..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="detect-btn" onclick="detect()">
+            <span class="btn-text">Detect</span>
+            <span class="btn-icon">→</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="result-area"></div>
+    </section>
+
+    <section class="how-it-works">
+      <h2>How dates are hidden</h2>
+      <div class="layers-grid">
+        <div class="layer-card">
+          <div class="layer-num">01</div>
+          <div class="layer-name">JSON-LD Schema</div>
+          <div class="layer-desc">
+            Most job sites embed a hidden <code>&lt;script type="application/ld+json"&gt;</code> block with a <code>JobPosting</code> schema containing <code>"datePosted"</code>. Invisible on the page, readable in source. This is what Google Jobs uses.
+          </div>
+          <div class="layer-field">datePosted · datePublished</div>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">02</div>
+          <div class="layer-name">Meta Tags</div>
+          <div class="layer-desc">
+            Sites often include <code>&lt;meta&gt;</code> tags for SEO with publish dates. Common on news sites and job boards that repurpose article schemas.
+          </div>
+          <div class="layer-field">article:published_time · pubdate · DC.date</div>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">03</div>
+          <div class="layer-name">Microdata</div>
+          <div class="layer-desc">
+            Older structured data standard. Dates embedded directly as HTML attributes with <code>itemprop</code> or <code>&lt;time datetime&gt;</code> tags anywhere in the markup.
+          </div>
+          <div class="layer-field">itemprop=datePosted · &lt;time datetime&gt;</div>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">04</div>
+          <div class="layer-name">URL Pattern</div>
+          <div class="layer-desc">
+            Some job boards encode the date in the URL path itself (e.g. <code>/jobs/2026/04/05/...</code>). Last resort — least reliable, but sometimes the only signal available.
+          </div>
+          <div class="layer-field">Path segments · query params</div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>Fetches via CORS proxy. Works on static HTML pages. JS-rendered sites (Greenhouse, Workday) may not return results.</p>
+    </footer>
+  </main>
+
+  <script src="detector.js"></script>
+</body>
+</html>
